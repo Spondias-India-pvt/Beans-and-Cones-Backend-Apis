@@ -291,14 +291,52 @@ const updateOrderStatus = async (id, status, changedBy = null) => {
   return updated;
 };
 
-const cancelOrder = async (id) => {
+const cancelOrder = async (id, cancelledBy) => {
+  // cancelledBy: { type: "STAFF" | "CUSTOMER", id: number }
   const order = await getOrderById(id);
+
   if (order.status === "COMPLETED") throw new Error("Cannot cancel a completed order");
   if (order.status === "CANCELLED") throw new Error("Order already cancelled");
 
+  // Customer can only cancel PENDING orders
+  if (cancelledBy.type === "CUSTOMER") {
+    if (order.customerId !== cancelledBy.id) {
+      throw new Error("You can only cancel your own orders");
+    }
+    if (order.status !== "PENDING") {
+      throw new Error(`Cannot cancel — order is already ${order.status}. Please contact the branch.`);
+    }
+  }
+
+  // Restore loyalty points if they were used
+  const loyaltyPointsUsed = Number(order.loyaltyPointsUsed);
+
   return await prisma.$transaction(async (tx) => {
-    const cancelled = await tx.order.update({ where: { id }, data: { status: "CANCELLED" } });
-    await tx.order_status_history.create({ data: { orderId: id, status: "CANCELLED" } });
+    const cancelled = await tx.order.update({
+      where: { id },
+      data:  { status: "CANCELLED" },
+    });
+
+    await tx.order_status_history.create({
+      data: { orderId: id, status: "CANCELLED", changedBy: cancelledBy.id ?? null },
+    });
+
+    // Refund loyalty points if used
+    if (loyaltyPointsUsed > 0 && order.customerId) {
+      await tx.customer.update({
+        where: { id: order.customerId },
+        data:  { loyaltyPoints: { increment: loyaltyPointsUsed } },
+      });
+      await tx.loyalty_transaction.create({
+        data: {
+          customerId: order.customerId,
+          points:     loyaltyPointsUsed,
+          type:       "REFUND",
+          orderId:    id,
+        },
+      });
+    }
+
     return cancelled;
   });
 };

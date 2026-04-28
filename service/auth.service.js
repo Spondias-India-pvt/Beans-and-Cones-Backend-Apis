@@ -1,6 +1,12 @@
-const prisma = require("../config/prisma");
-const bcrypt = require("bcrypt");
-const jwt    = require("jsonwebtoken");
+const prisma          = require("../config/prisma");
+const bcrypt          = require("bcrypt");
+const jwt             = require("jsonwebtoken");
+const { sendOtpEmail } = require("../utils/email");
+
+// ─── Generate 6-digit OTP ─────────────────────────────────────────────────────
+const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
+
+// ─── Login ────────────────────────────────────────────────────────────────────
 
 const login = async ({ username, password }) => {
   const user = await prisma.user.findFirst({
@@ -23,7 +29,7 @@ const login = async ({ username, password }) => {
     },
   });
 
-  if (!user) throw new Error("Invalid credentials");
+  if (!user)                    throw new Error("Invalid credentials");
   if (user.status !== "ACTIVE") throw new Error("Account is not active");
 
   const isMatch = await bcrypt.compare(password, user.passwordHash);
@@ -68,4 +74,60 @@ const login = async ({ username, password }) => {
   };
 };
 
-module.exports = { login };
+// ─── Forgot Password — send OTP to email ─────────────────────────────────────
+
+const forgotPassword = async (email) => {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) throw new Error("No account found with this email");
+  if (user.status !== "ACTIVE") throw new Error("Account is not active");
+
+  const otp       = generateOtp();
+  const expiry    = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data:  { resetOtp: otp, resetOtpExpiry: expiry },
+  });
+
+  const name = user.superAdminStaff?.firstName || user.branchEmployee?.firstName || user.username;
+  await sendOtpEmail(email, otp, name);
+
+  return { message: "OTP sent to your email" };
+};
+
+// ─── Verify OTP ───────────────────────────────────────────────────────────────
+
+const verifyOtp = async (email, otp) => {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user)            throw new Error("No account found with this email");
+  if (!user.resetOtp)   throw new Error("No OTP requested. Please request a new one.");
+  if (user.resetOtp !== otp) throw new Error("Invalid OTP");
+  if (new Date() > user.resetOtpExpiry) throw new Error("OTP has expired. Please request a new one.");
+
+  return { message: "OTP verified. You can now reset your password.", email };
+};
+
+// ─── Reset Password ───────────────────────────────────────────────────────────
+
+const resetPassword = async (email, otp, newPassword) => {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user)            throw new Error("No account found with this email");
+  if (!user.resetOtp)   throw new Error("No OTP requested. Please request a new one.");
+  if (user.resetOtp !== otp) throw new Error("Invalid OTP");
+  if (new Date() > user.resetOtpExpiry) throw new Error("OTP has expired. Please request a new one.");
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data:  {
+      passwordHash,
+      resetOtp:       null,
+      resetOtpExpiry: null,
+    },
+  });
+
+  return { message: "Password reset successfully. You can now login." };
+};
+
+module.exports = { login, forgotPassword, verifyOtp, resetPassword };

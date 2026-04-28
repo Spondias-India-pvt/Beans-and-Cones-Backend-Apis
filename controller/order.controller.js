@@ -30,9 +30,27 @@ const updateOrderStatus = async (req, res, next) => {
 
 const cancelOrder = async (req, res, next) => {
   try {
-    const order = await orderSvc.cancelOrder(toInt(req.params.id));
+    // Staff cancellation
+    const order = await orderSvc.cancelOrder(toInt(req.params.id), {
+      type: "STAFF",
+      id:   req.user.id,
+    });
     await log(req, "CANCEL_ORDER", "ORDER", order.id, `${req.user.username} cancelled order ID: ${order.id}`);
     return res.json({ success: true, message: "Order cancelled", data: order });
+  } catch (e) { next(e); }
+};
+
+// Customer cancels their own order (PENDING only)
+const cancelOrderByCustomer = async (req, res, next) => {
+  try {
+    if (!req.customer) {
+      return res.status(401).json({ success: false, message: "Customer login required" });
+    }
+    const order = await orderSvc.cancelOrder(toInt(req.params.id), {
+      type: "CUSTOMER",
+      id:   req.customer.id,
+    });
+    return res.json({ success: true, message: "Order cancelled successfully", data: order });
   } catch (e) { next(e); }
 };
 
@@ -82,7 +100,7 @@ const getAllDeliveries = async (req, res, next) => {
 };
 
 module.exports = {
-  createOrder, getAllOrders, getOrderById, updateOrderStatus, cancelOrder,
+  createOrder, getAllOrders, getOrderById, updateOrderStatus, cancelOrder, cancelOrderByCustomer,
   createPayment, refundPayment, getPayment,
   createDelivery, updateDeliveryStatus, getDelivery, getAllDeliveries,
 };

@@ -1,7 +1,7 @@
 const express = require("express");
 const router  = express.Router();
 const ctrl    = require("../controller/order.controller");
-const { authenticate, canManageEmployees, isSuperAdmin } = require("../middleware/auth.middleware");
+const { authenticate, canManageEmployees, isSuperAdmin, authenticateCustomer } = require("../middleware/auth.middleware");
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
 router.post("/",                              authenticate, canManageEmployees, ctrl.createOrder);
@@ -9,7 +9,12 @@ router.get("/",                               authenticate, canManageEmployees, 
 router.get("/deliveries",                     authenticate, canManageEmployees, ctrl.getAllDeliveries);
 router.get("/:id",                            authenticate, canManageEmployees, ctrl.getOrderById);
 router.patch("/:id/status",                   authenticate, canManageEmployees, ctrl.updateOrderStatus);
+
+// Staff cancel (any status except COMPLETED)
 router.patch("/:id/cancel",                   authenticate, canManageEmployees, ctrl.cancelOrder);
+
+// Customer cancel (PENDING only)
+router.patch("/:id/customer-cancel",          authenticateCustomer, ctrl.cancelOrderByCustomer);
 
 // ─── Payments ─────────────────────────────────────────────────────────────────
 router.post("/:id/payment",                   authenticate, canManageEmployees, ctrl.createPayment);

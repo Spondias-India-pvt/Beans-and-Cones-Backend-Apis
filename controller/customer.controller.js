@@ -18,6 +18,38 @@ const login = async (req, res, next) => {
   } catch (e) { next(e); }
 };
 
+const forgotPassword = async (req, res, next) => {
+  try {
+    const { identifier } = req.body; // phone or email
+    if (!identifier) return res.status(400).json({ success: false, message: "phone or email is required" });
+    const result = await svc.forgotPassword(identifier);
+    return res.json({ success: true, message: result.message });
+  } catch (e) { next(e); }
+};
+
+const verifyOtp = async (req, res, next) => {
+  try {
+    const { identifier, otp } = req.body;
+    if (!identifier || !otp) return res.status(400).json({ success: false, message: "identifier and otp are required" });
+    const result = await svc.verifyOtp(identifier, otp);
+    return res.json({ success: true, message: result.message });
+  } catch (e) { next(e); }
+};
+
+const resetPassword = async (req, res, next) => {
+  try {
+    const { identifier, otp, newPassword } = req.body;
+    if (!identifier || !otp || !newPassword) {
+      return res.status(400).json({ success: false, message: "identifier, otp and newPassword are required" });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: "newPassword must be at least 6 characters" });
+    }
+    const result = await svc.resetPassword(identifier, otp, newPassword);
+    return res.json({ success: true, message: result.message });
+  } catch (e) { next(e); }
+};
+
 // ─── Profile ──────────────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
   try {
@@ -51,4 +83,4 @@ const deleteAddress = async (req, res, next) => {
   } catch (e) { next(e); }
 };
 
-module.exports = { register, login, getProfile, updateProfile, getAddresses, addAddress, deleteAddress };
+module.exports = { register, login, forgotPassword, verifyOtp, resetPassword, getProfile, updateProfile, getAddresses, addAddress, deleteAddress };

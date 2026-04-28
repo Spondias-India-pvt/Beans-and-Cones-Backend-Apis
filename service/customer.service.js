@@ -1,6 +1,10 @@
-const prisma = require("../config/prisma");
-const bcrypt  = require("bcrypt");
-const jwt     = require("jsonwebtoken");
+const prisma          = require("../config/prisma");
+const bcrypt          = require("bcrypt");
+const jwt             = require("jsonwebtoken");
+const { sendOtpEmail } = require("../utils/email");
+
+// ─── Generate 6-digit OTP ─────────────────────────────────────────────────────
+const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
 // ─── Register ─────────────────────────────────────────────────────────────────
 
@@ -23,8 +27,20 @@ const register = async ({ name, phone, email, password }) => {
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 
-const login = async ({ phone, password }) => {
-  const customer = await prisma.customer.findUnique({ where: { phone } });
+const login = async ({ phone, email, password }) => {
+  // Allow login with phone OR email
+  const identifier = phone || email;
+  if (!identifier) throw new Error("Phone or email is required");
+
+  const customer = await prisma.customer.findFirst({
+    where: {
+      OR: [
+        { phone: identifier },
+        { email: identifier },
+      ],
+    },
+  });
+
   if (!customer) throw new Error("Invalid credentials");
   if (!customer.isActive) throw new Error("Account is inactive");
   if (!customer.passwordHash) throw new Error("No password set. Use OTP login.");
@@ -113,3 +129,68 @@ const deleteAddress = async (customerId, addressId) => {
 };
 
 module.exports = { register, login, getProfile, updateProfile, addAddress, getAddresses, deleteAddress };
+
+// ─── Forgot Password — send OTP ───────────────────────────────────────────────
+
+const forgotPassword = async (identifier) => {
+  // identifier can be phone or email
+  const customer = await prisma.customer.findFirst({
+    where: { OR: [{ phone: identifier }, { email: identifier }] },
+  });
+  if (!customer) throw new Error("No account found with this phone or email");
+  if (!customer.isActive) throw new Error("Account is inactive");
+  if (!customer.email) throw new Error("No email linked to this account. Contact support.");
+
+  const otp    = generateOtp();
+  const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  await prisma.customer.update({
+    where: { id: customer.id },
+    data:  { resetOtp: otp, resetOtpExpiry: expiry },
+  });
+
+  await sendOtpEmail(customer.email, otp, customer.name);
+
+  return { message: "OTP sent to your registered email" };
+};
+
+// ─── Verify OTP ───────────────────────────────────────────────────────────────
+
+const verifyOtp = async (identifier, otp) => {
+  const customer = await prisma.customer.findFirst({
+    where: { OR: [{ phone: identifier }, { email: identifier }] },
+  });
+  if (!customer)              throw new Error("No account found");
+  if (!customer.resetOtp)     throw new Error("No OTP requested. Please request a new one.");
+  if (customer.resetOtp !== otp) throw new Error("Invalid OTP");
+  if (new Date() > customer.resetOtpExpiry) throw new Error("OTP has expired. Please request a new one.");
+
+  return { message: "OTP verified. You can now reset your password.", identifier };
+};
+
+// ─── Reset Password ───────────────────────────────────────────────────────────
+
+const resetPassword = async (identifier, otp, newPassword) => {
+  const customer = await prisma.customer.findFirst({
+    where: { OR: [{ phone: identifier }, { email: identifier }] },
+  });
+  if (!customer)              throw new Error("No account found");
+  if (!customer.resetOtp)     throw new Error("No OTP requested. Please request a new one.");
+  if (customer.resetOtp !== otp) throw new Error("Invalid OTP");
+  if (new Date() > customer.resetOtpExpiry) throw new Error("OTP has expired. Please request a new one.");
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+
+  await prisma.customer.update({
+    where: { id: customer.id },
+    data:  { passwordHash, resetOtp: null, resetOtpExpiry: null },
+  });
+
+  return { message: "Password reset successfully. You can now login." };
+};
+
+module.exports = {
+  register, login, getProfile, updateProfile,
+  addAddress, getAddresses, deleteAddress,
+  forgotPassword, verifyOtp, resetPassword,
+};

@@ -57,6 +57,10 @@ model user {
   lastLogin    DateTime?
   createdAt    DateTime   @default(now())
 
+  // OTP for forgot password
+  resetOtp        String?   @db.VarChar(6)
+  resetOtpExpiry  DateTime?
+
   superAdminStaff super_admin_staff?
   branchEmployee  branch_employee?
   auditLogs       auditlog[]
@@ -608,6 +612,10 @@ model customer {
   loyaltyPoints Decimal  @default(0) @db.Decimal(10, 2)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
+
+  // OTP for forgot password
+  resetOtp        String?   @db.VarChar(6)
+  resetOtpExpiry  DateTime?
 
   addresses     customer_address[]
   orders        order[]
