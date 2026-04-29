@@ -1,5 +1,5 @@
-const orderSvc   = require("../service/order.service");
-const paymentSvc = require("../service/payment.service");
+const orderSvc    = require("../service/order.service");
+const paymentSvc  = require("../service/payment.service");
 const deliverySvc = require("../service/delivery.service");
 const { createAuditLog } = require("../utils/auditLog");
 
@@ -7,9 +7,15 @@ const toInt = (v) => Number(v);
 const log   = (req, action, module, referenceId, details) =>
   createAuditLog({ userId: req.user.id, username: req.user.username, action, module, referenceId, details });
 
-// ─── Orders ───────────────────────────────────────────────────────────────────
-const getAllOrders  = async (req, res, next) => { try { return res.json({ success: true, data: await orderSvc.getAllOrders(req.user, req.query) }); } catch (e) { next(e); } };
-const getOrderById = async (req, res, next) => { try { return res.json({ success: true, data: await orderSvc.getOrderById(toInt(req.params.id)) }); } catch (e) { next(e); } };
+// ─── Staff / POS Orders ───────────────────────────────────────────────────────
+
+const getAllOrders = async (req, res, next) => {
+  try { return res.json({ success: true, data: await orderSvc.getAllOrders(req.user, req.query) }); } catch (e) { next(e); }
+};
+
+const getOrderById = async (req, res, next) => {
+  try { return res.json({ success: true, data: await orderSvc.getOrderById(toInt(req.params.id)) }); } catch (e) { next(e); }
+};
 
 const createOrder = async (req, res, next) => {
   try {
@@ -22,39 +28,64 @@ const createOrder = async (req, res, next) => {
 const updateOrderStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
-    const order = await orderSvc.updateOrderStatus(toInt(req.params.id), status);
-    await log(req, "UPDATE_ORDER_STATUS", "ORDER", order.id, `${req.user.username} updated order ${order.orderNumber} to ${status}`);
+    const order = await orderSvc.updateOrderStatus(toInt(req.params.id), status, req.user.id);
+    await log(req, "UPDATE_ORDER_STATUS", "ORDER", order.id, `${req.user.username} updated order to ${status}`);
     return res.json({ success: true, message: "Order status updated", data: order });
   } catch (e) { next(e); }
 };
 
+// Staff cancel — any status except COMPLETED
 const cancelOrder = async (req, res, next) => {
   try {
-    // Staff cancellation
-    const order = await orderSvc.cancelOrder(toInt(req.params.id), {
-      type: "STAFF",
-      id:   req.user.id,
-    });
+    const order = await orderSvc.cancelOrder(toInt(req.params.id), { type: "STAFF", id: req.user.id });
     await log(req, "CANCEL_ORDER", "ORDER", order.id, `${req.user.username} cancelled order ID: ${order.id}`);
     return res.json({ success: true, message: "Order cancelled", data: order });
   } catch (e) { next(e); }
 };
 
-// Customer cancels their own order (PENDING only)
+// ─── Customer self-service ────────────────────────────────────────────────────
+
+// Customer places order themselves (token required)
+const placeOrderByCustomer = async (req, res, next) => {
+  try {
+    if (!req.customer) return res.status(401).json({ success: false, message: "Customer login required" });
+    const order = await orderSvc.checkout({ ...req.body, customerId: req.customer.id });
+    return res.status(201).json({ success: true, message: "Order placed successfully", data: order });
+  } catch (e) { next(e); }
+};
+
+// Customer views their own orders
+const getMyOrders = async (req, res, next) => {
+  try {
+    if (!req.customer) return res.status(401).json({ success: false, message: "Customer login required" });
+    const orders = await orderSvc.getAllOrders({ userType: "CUSTOMER" }, { ...req.query, customerId: req.customer.id });
+    return res.json({ success: true, data: orders });
+  } catch (e) { next(e); }
+};
+
+// Customer views single order
+const getMyOrderById = async (req, res, next) => {
+  try {
+    if (!req.customer) return res.status(401).json({ success: false, message: "Customer login required" });
+    const order = await orderSvc.getOrderById(toInt(req.params.id));
+    if (order.customerId !== req.customer.id) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+    return res.json({ success: true, data: order });
+  } catch (e) { next(e); }
+};
+
+// Customer cancels own order — within 2-minute window, PENDING only
 const cancelOrderByCustomer = async (req, res, next) => {
   try {
-    if (!req.customer) {
-      return res.status(401).json({ success: false, message: "Customer login required" });
-    }
-    const order = await orderSvc.cancelOrder(toInt(req.params.id), {
-      type: "CUSTOMER",
-      id:   req.customer.id,
-    });
+    if (!req.customer) return res.status(401).json({ success: false, message: "Customer login required" });
+    const order = await orderSvc.cancelOrder(toInt(req.params.id), { type: "CUSTOMER", id: req.customer.id });
     return res.json({ success: true, message: "Order cancelled successfully", data: order });
   } catch (e) { next(e); }
 };
 
 // ─── Payments ─────────────────────────────────────────────────────────────────
+
 const createPayment = async (req, res, next) => {
   try {
     const payment = await paymentSvc.createPayment(toInt(req.params.id), req.body);
@@ -76,6 +107,7 @@ const getPayment = async (req, res, next) => {
 };
 
 // ─── Delivery ─────────────────────────────────────────────────────────────────
+
 const createDelivery = async (req, res, next) => {
   try {
     const delivery = await deliverySvc.createDelivery(toInt(req.params.id), req.body.deliveryAddress);
@@ -100,7 +132,9 @@ const getAllDeliveries = async (req, res, next) => {
 };
 
 module.exports = {
-  createOrder, getAllOrders, getOrderById, updateOrderStatus, cancelOrder, cancelOrderByCustomer,
+  createOrder, getAllOrders, getOrderById, updateOrderStatus,
+  cancelOrder, cancelOrderByCustomer,
+  placeOrderByCustomer, getMyOrders, getMyOrderById,
   createPayment, refundPayment, getPayment,
   createDelivery, updateDeliveryStatus, getDelivery, getAllDeliveries,
 };

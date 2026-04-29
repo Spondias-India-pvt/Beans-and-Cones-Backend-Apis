@@ -3,7 +3,12 @@ const router  = express.Router();
 const ctrl    = require("../controller/order.controller");
 const { authenticate, canManageEmployees, isSuperAdmin, authenticateCustomer } = require("../middleware/auth.middleware");
 
-// ─── Orders ───────────────────────────────────────────────────────────────────
+// ─── Customer self-service (must be before /:id routes) ──────────────────────
+router.post("/customer/place",                authenticateCustomer, ctrl.placeOrderByCustomer);
+router.get("/customer/my-orders",             authenticateCustomer, ctrl.getMyOrders);
+router.get("/customer/my-orders/:id",         authenticateCustomer, ctrl.getMyOrderById);
+
+// ─── Staff / POS Orders ───────────────────────────────────────────────────────
 router.post("/",                              authenticate, canManageEmployees, ctrl.createOrder);
 router.get("/",                               authenticate, canManageEmployees, ctrl.getAllOrders);
 router.get("/deliveries",                     authenticate, canManageEmployees, ctrl.getAllDeliveries);
@@ -13,7 +18,7 @@ router.patch("/:id/status",                   authenticate, canManageEmployees, 
 // Staff cancel (any status except COMPLETED)
 router.patch("/:id/cancel",                   authenticate, canManageEmployees, ctrl.cancelOrder);
 
-// Customer cancel (PENDING only)
+// Customer cancel (within 2-minute window, PENDING only)
 router.patch("/:id/customer-cancel",          authenticateCustomer, ctrl.cancelOrderByCustomer);
 
 // ─── Payments ─────────────────────────────────────────────────────────────────

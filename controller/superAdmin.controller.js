@@ -74,6 +74,7 @@ const deleteRole = async (req, res, next) => {
 // ─── Staff ────────────────────────────────────────────────────────────────────
 const getAllStaff  = async (req, res, next) => { try { return res.json({ success: true, data: await svc.getAllStaff() }); } catch (e) { next(e); } };
 const getStaffById = async (req, res, next) => { try { return res.json({ success: true, data: await svc.getStaffById(toInt(req.params.id)) }); } catch (e) { next(e); } };
+const getAllUsers   = async (req, res, next) => { try { return res.json({ success: true, data: await svc.getAllUsers(req.query) }); } catch (e) { next(e); } };
 
 const createStaff = async (req, res, next) => {
   try {
@@ -121,4 +122,5 @@ module.exports = {
   seedRoles, getAllRoles, getRoleById, createRole, updateRole, deleteRole,
   getAllStaff, getStaffById, createStaff, updateStaff, resetStaffPassword,
   grantBranchAccess, revokeBranchAccess,
+  getAllUsers,
 };

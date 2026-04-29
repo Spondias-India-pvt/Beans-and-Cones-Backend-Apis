@@ -337,7 +337,60 @@ const revokeBranchAccess = async (staffId, branchId) => {
   });
 };
 
-// ─── Dashboard ────────────────────────────────────────────────────────────────
+// ─── Get all users (staff + branch employees) ────────────────────────────────
+
+const getAllUsers = async (filters = {}) => {
+  const where = {};
+  if (filters.userType) where.userType = filters.userType;
+  if (filters.status)   where.status   = filters.status;
+
+  return await prisma.user.findMany({
+    where,
+    select: {
+      id:        true,
+      username:  true,
+      email:     true,
+      userType:  true,
+      status:    true,
+      lastLogin: true,
+      createdAt: true,
+      superAdminStaff: {
+        select: {
+          id:             true,
+          staffCode:      true,
+          firstName:      true,
+          lastName:       true,
+          phone:          true,
+          designation:    true,
+          department:     true,
+          employmentType: true,
+          status:         true,
+          role:           { select: { id: true, name: true } },
+          branchAccess: {
+            select: { branch: { select: { id: true, branchName: true, branchCode: true } } },
+          },
+        },
+      },
+      branchEmployee: {
+        select: {
+          id:             true,
+          employeeCode:   true,
+          firstName:      true,
+          lastName:       true,
+          phone:          true,
+          email:          true,
+          designation:    true,
+          department:     true,
+          employmentType: true,
+          status:         true,
+          role:           { select: { id: true, name: true } },
+          branch:         { select: { id: true, branchName: true, branchCode: true } },
+        },
+      },
+    },
+    orderBy: { id: "asc" },
+  });
+};
 
 const getDashboardStats = async () => {
   const branchAdminRole = await prisma.role.findUnique({ where: { name: "BRANCH_ADMIN" } });
@@ -373,4 +426,5 @@ module.exports = {
   createStaff, getAllStaff, getStaffById, updateStaff, resetStaffPassword,
   grantBranchAccess, revokeBranchAccess,
   getDashboardStats,
+  getAllUsers,
 };

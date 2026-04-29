@@ -138,4 +138,44 @@ const getCartDetails = async (cartId) => {
   return { ...cart, subtotal };
 };
 
-module.exports = { getOrCreateCart, addToCart, updateCartItem, removeFromCart, applyCouponToCart, clearCart, getCartDetails };
+// ─── Checkout from cart ───────────────────────────────────────────────────────
+
+const checkoutFromCart = async (cartId, { loyaltyPointsToRedeem = 0, notes }) => {
+  const cart = await prisma.cart.findUnique({
+    where:   { id: cartId },
+    include: {
+      items: {
+        include: {
+          product: { include: { variants: true } },
+        },
+      },
+    },
+  });
+
+  if (!cart) throw new Error("Cart not found");
+  if (cart.status !== "ACTIVE") throw new Error("Cart is not active");
+  if (!cart.items || cart.items.length === 0) throw new Error("Cart is empty");
+
+  // Build items array for checkout
+  const items = cart.items.map((ci) => ({
+    productId: ci.productId,
+    variantId: ci.variantId,
+    quantity:  ci.quantity,
+  }));
+
+  // Mark cart as ORDERED so it can't be reused
+  await prisma.cart.update({ where: { id: cartId }, data: { status: "ORDERED" } });
+
+  return {
+    branchId:   cart.branchId,
+    customerId: cart.customerId,
+    guestToken: cart.guestToken,
+    orderType:  "DINE_IN", // default — can be overridden
+    items,
+    couponCode: cart.couponCode,
+    loyaltyPointsToRedeem,
+    notes,
+  };
+};
+
+module.exports = { getOrCreateCart, addToCart, updateCartItem, removeFromCart, applyCouponToCart, clearCart, getCartDetails, checkoutFromCart };

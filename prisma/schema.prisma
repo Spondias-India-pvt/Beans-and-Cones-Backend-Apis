@@ -462,6 +462,7 @@ model order {
   couponId        Int?
   coupon          coupon?       @relation(fields: [couponId], references: [id])
   loyaltyPointsUsed Decimal     @default(0) @db.Decimal(10, 2)
+  cancelDeadline  DateTime?     // customer can cancel before this time
   notes           String?       @db.Text
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt

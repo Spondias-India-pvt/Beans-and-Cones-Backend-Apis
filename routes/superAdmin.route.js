@@ -21,6 +21,9 @@ router.patch("/change-password",              validateChangePassword, ctrl.chang
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 router.get("/dashboard",                      ctrl.getDashboardStats);
 
+// ─── All users (staff + branch employees) ────────────────────────────────────
+router.get("/users",                          ctrl.getAllUsers);
+
 // ─── Roles ────────────────────────────────────────────────────────────────────
 router.post("/roles/seed",                    ctrl.seedRoles);
 router.post("/roles",                         validateCreateRole, ctrl.createRole);

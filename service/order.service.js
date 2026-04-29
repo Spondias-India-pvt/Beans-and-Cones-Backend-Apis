@@ -1,9 +1,10 @@
 const prisma = require("../config/prisma");
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const POINTS_PER_DOLLAR   = 1;     // earn 1 point per $1 spent
-const POINTS_VALUE        = 0.01;  // 1 point = $0.01
-const MAX_LOYALTY_PERCENT = 20;    // max 20% of order can be paid with points
+const POINTS_PER_DOLLAR      = 1;    // earn 1 point per ₹1 spent
+const POINTS_VALUE           = 0.01; // 1 point = ₹0.01
+const MAX_LOYALTY_PERCENT    = 20;   // max 20% of order paid with points
+const cancleorderrange  = 10;    // customer can cancel within 2 minutes
 
 // ─── Auto-generate order number ───────────────────────────────────────────────
 
@@ -142,6 +143,8 @@ const checkout = async (data) => {
         totalAmount,
         couponId,
         notes:              notes ?? null,
+        // Customer gets 2 minutes to cancel after placing
+        cancelDeadline: new Date(Date.now() + cancleorderrange * 60 * 1000),
         items: { create: orderItems },
       },
       include: {
@@ -298,13 +301,25 @@ const cancelOrder = async (id, cancelledBy) => {
   if (order.status === "COMPLETED") throw new Error("Cannot cancel a completed order");
   if (order.status === "CANCELLED") throw new Error("Order already cancelled");
 
-  // Customer can only cancel PENDING orders
+  // Customer cancel rules
   if (cancelledBy.type === "CUSTOMER") {
     if (order.customerId !== cancelledBy.id) {
       throw new Error("You can only cancel your own orders");
     }
+
+    // Check cancel time window
+    if (order.cancelDeadline && new Date() > order.cancelDeadline) {
+      const minutesAgo = Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 60000);
+      throw new Error(
+        `Cancellation window has passed. Orders can only be cancelled within $ cancleorderrange} minutes of placing. Your order was placed ${minutesAgo} minutes ago.`
+      );
+    }
+
+    // Customer can only cancel PENDING orders
     if (order.status !== "PENDING") {
-      throw new Error(`Cannot cancel — order is already ${order.status}. Please contact the branch.`);
+      throw new Error(
+        `Cannot cancel — order is already ${order.status}. Please contact the branch.`
+      );
     }
   }
 
