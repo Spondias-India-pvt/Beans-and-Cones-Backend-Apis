@@ -82,7 +82,7 @@ const forgotPassword = async (email) => {
   if (user.status !== "ACTIVE") throw new Error("Account is not active");
 
   const otp       = generateOtp();
-  const expiry    = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  const expiry    = new Date(Date.now() + 2 * 60 * 1000); // 10 minutes
 
   await prisma.user.update({
     where: { id: user.id },
