@@ -1,12 +1,29 @@
 require("dotenv").config();
 const express = require("express");
 const cors    = require("cors");
+const path    = require("path");
 
 const app  = express();
 const BASE = "/api";
 
 app.use(express.json());
 app.use(cors());
+
+// ─── Serve static HTML pages ──────────────────────────────────────────────────
+app.use(express.static(path.join(__dirname, "public")));
+
+// Reset password page — opened when user clicks email link
+app.get("/reset-password", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "reset-password.html"));
+});
+
+// Serve forgot-password page with reCAPTCHA site key injected
+app.get("/forgot-password", (req, res) => {
+  const fs   = require("fs");
+  let   html = fs.readFileSync(path.join(__dirname, "public", "forgot-password.html"), "utf8");
+  html = html.replace("__RECAPTCHA_SITE_KEY__", process.env.RECAPTCHA_SITE_KEY || "");
+  res.send(html);
+});
 
 // ─── Staff / Admin Routes ─────────────────────────────────────────────────────
 app.use(`${BASE}/auth`,              require("./routes/auth.route"));

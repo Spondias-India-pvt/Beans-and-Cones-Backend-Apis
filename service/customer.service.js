@@ -1,10 +1,11 @@
-const prisma          = require("../config/prisma");
-const bcrypt          = require("bcrypt");
-const jwt             = require("jsonwebtoken");
-const { sendOtpEmail } = require("../utils/email");
+const prisma                 = require("../config/prisma");
+const bcrypt                 = require("bcrypt");
+const jwt                    = require("jsonwebtoken");
+const crypto                 = require("crypto");
+const { sendResetLinkEmail } = require("../utils/email");
 
-// ─── Generate 6-digit OTP ─────────────────────────────────────────────────────
-const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
+// ─── Generate secure random token ────────────────────────────────────────────
+const generateResetToken = () => crypto.randomBytes(32).toString("hex");
 
 // ─── Register ─────────────────────────────────────────────────────────────────
 
@@ -28,22 +29,16 @@ const register = async ({ name, phone, email, password }) => {
 // ─── Login ────────────────────────────────────────────────────────────────────
 
 const login = async ({ phone, email, password }) => {
-  // Allow login with phone OR email
   const identifier = phone || email;
   if (!identifier) throw new Error("Phone or email is required");
 
   const customer = await prisma.customer.findFirst({
-    where: {
-      OR: [
-        { phone: identifier },
-        { email: identifier },
-      ],
-    },
+    where: { OR: [{ phone: identifier }, { email: identifier }] },
   });
 
-  if (!customer) throw new Error("Invalid credentials");
-  if (!customer.isActive) throw new Error("Account is inactive");
-  if (!customer.passwordHash) throw new Error("No password set. Use OTP login.");
+  if (!customer)               throw new Error("Invalid credentials");
+  if (!customer.isActive)      throw new Error("Account is inactive");
+  if (!customer.passwordHash)  throw new Error("No password set. Contact support.");
 
   const isMatch = await bcrypt.compare(password, customer.passwordHash);
   if (!isMatch) throw new Error("Invalid credentials");
@@ -70,7 +65,7 @@ const login = async ({ phone, email, password }) => {
 
 const getProfile = async (customerId) => {
   const customer = await prisma.customer.findUnique({
-    where: { id: customerId },
+    where:  { id: customerId },
     select: {
       id: true, name: true, phone: true, email: true,
       loyaltyPoints: true, createdAt: true,
@@ -103,16 +98,13 @@ const updateProfile = async (customerId, { name, email }) => {
 // ─── Addresses ────────────────────────────────────────────────────────────────
 
 const addAddress = async (customerId, data) => {
-  // If setting as default, unset all others first
   if (data.isDefault) {
     await prisma.customer_address.updateMany({
       where: { customerId },
       data:  { isDefault: false },
     });
   }
-  return await prisma.customer_address.create({
-    data: { customerId, ...data },
-  });
+  return await prisma.customer_address.create({ data: { customerId, ...data } });
 };
 
 const getAddresses = async (customerId) => {
@@ -128,56 +120,45 @@ const deleteAddress = async (customerId, addressId) => {
   return await prisma.customer_address.delete({ where: { id: addressId } });
 };
 
-module.exports = { register, login, getProfile, updateProfile, addAddress, getAddresses, deleteAddress };
-
-// ─── Forgot Password — send OTP ───────────────────────────────────────────────
+// ─── Step 1: Forgot Password — generate token + send reset link ───────────────
 
 const forgotPassword = async (identifier) => {
-  // identifier can be phone or email
   const customer = await prisma.customer.findFirst({
     where: { OR: [{ phone: identifier }, { email: identifier }] },
   });
-  if (!customer) throw new Error("No account found with this phone or email");
+  if (!customer)         throw new Error("No account found with this phone or email");
   if (!customer.isActive) throw new Error("Account is inactive");
-  if (!customer.email) throw new Error("No email linked to this account. Contact support.");
+  if (!customer.email)   throw new Error("No email linked to this account. Contact support.");
 
-  const otp    = generateOtp();
-  const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  const resetToken = generateResetToken();
+  const expiry     = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
   await prisma.customer.update({
     where: { id: customer.id },
-    data:  { resetOtp: otp, resetOtpExpiry: expiry },
+    data:  { resetOtp: resetToken, resetOtpExpiry: expiry },
   });
 
-  await sendOtpEmail(customer.email, otp, customer.name);
+  await sendResetLinkEmail(customer.email, resetToken, customer.name, "customer");
 
-  return { message: "OTP sent to your registered email" };
+  return { message: "Password reset link sent to your email. Valid for 30 minutes." };
 };
 
-// ─── Verify OTP ───────────────────────────────────────────────────────────────
+// ─── Step 2: Validate token (frontend calls when user clicks the link) ────────
 
-const verifyOtp = async (identifier, otp) => {
-  const customer = await prisma.customer.findFirst({
-    where: { OR: [{ phone: identifier }, { email: identifier }] },
-  });
-  if (!customer)              throw new Error("No account found");
-  if (!customer.resetOtp)     throw new Error("No OTP requested. Please request a new one.");
-  if (customer.resetOtp !== otp) throw new Error("Invalid OTP");
-  if (new Date() > customer.resetOtpExpiry) throw new Error("OTP has expired. Please request a new one.");
+const validateResetToken = async (token) => {
+  const customer = await prisma.customer.findFirst({ where: { resetOtp: token } });
+  if (!customer)                             throw new Error("Invalid or expired reset link");
+  if (new Date() > customer.resetOtpExpiry)  throw new Error("Reset link has expired. Please request a new one.");
 
-  return { message: "OTP verified. You can now reset your password.", identifier };
+  return { message: "Token is valid. You can now reset your password." };
 };
 
-// ─── Reset Password ───────────────────────────────────────────────────────────
+// ─── Step 3: Reset Password using token ──────────────────────────────────────
 
-const resetPassword = async (identifier, otp, newPassword) => {
-  const customer = await prisma.customer.findFirst({
-    where: { OR: [{ phone: identifier }, { email: identifier }] },
-  });
-  if (!customer)              throw new Error("No account found");
-  if (!customer.resetOtp)     throw new Error("No OTP requested. Please request a new one.");
-  if (customer.resetOtp !== otp) throw new Error("Invalid OTP");
-  if (new Date() > customer.resetOtpExpiry) throw new Error("OTP has expired. Please request a new one.");
+const resetPassword = async (token, newPassword) => {
+  const customer = await prisma.customer.findFirst({ where: { resetOtp: token } });
+  if (!customer)                             throw new Error("Invalid or expired reset link");
+  if (new Date() > customer.resetOtpExpiry)  throw new Error("Reset link has expired. Please request a new one.");
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
 
@@ -192,5 +173,5 @@ const resetPassword = async (identifier, otp, newPassword) => {
 module.exports = {
   register, login, getProfile, updateProfile,
   addAddress, getAddresses, deleteAddress,
-  forgotPassword, verifyOtp, resetPassword,
+  forgotPassword, validateResetToken, resetPassword,
 };

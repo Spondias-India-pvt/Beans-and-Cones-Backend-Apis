@@ -1,10 +1,11 @@
-const prisma          = require("../config/prisma");
-const bcrypt          = require("bcrypt");
-const jwt             = require("jsonwebtoken");
-const { sendOtpEmail } = require("../utils/email");
+const prisma                 = require("../config/prisma");
+const bcrypt                 = require("bcrypt");
+const jwt                    = require("jsonwebtoken");
+const crypto                 = require("crypto");
+const { sendResetLinkEmail } = require("../utils/email");
 
-// ─── Generate 6-digit OTP ─────────────────────────────────────────────────────
-const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
+// ─── Generate secure random token ────────────────────────────────────────────
+const generateResetToken = () => crypto.randomBytes(32).toString("hex");
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 
@@ -74,47 +75,44 @@ const login = async ({ username, password }) => {
   };
 };
 
-// ─── Forgot Password — send OTP to email ─────────────────────────────────────
+// ─── Step 1: Forgot Password — generate token + send reset link ───────────────
 
 const forgotPassword = async (email) => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) throw new Error("No account found with this email");
   if (user.status !== "ACTIVE") throw new Error("Account is not active");
 
-  const otp       = generateOtp();
-  const expiry    = new Date(Date.now() + 2 * 60 * 1000); // 10 minutes
+  const resetToken = generateResetToken();
+  const expiry     = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
+  // Store token (reusing resetOtp field for the token string)
   await prisma.user.update({
     where: { id: user.id },
-    data:  { resetOtp: otp, resetOtpExpiry: expiry },
+    data:  { resetOtp: resetToken, resetOtpExpiry: expiry },
   });
 
-  const name = user.superAdminStaff?.firstName || user.branchEmployee?.firstName || user.username;
-  await sendOtpEmail(email, otp, name);
+  const name = user.username;
+  await sendResetLinkEmail(email, resetToken, name, "staff");
 
-  return { message: "OTP sent to your email" };
+  return { message: "Password reset link sent to your email. Valid for 30 minutes." };
 };
 
-// ─── Verify OTP ───────────────────────────────────────────────────────────────
+// ─── Step 2: Validate token (frontend calls this when user clicks the link) ───
 
-const verifyOtp = async (email, otp) => {
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user)            throw new Error("No account found with this email");
-  if (!user.resetOtp)   throw new Error("No OTP requested. Please request a new one.");
-  if (user.resetOtp !== otp) throw new Error("Invalid OTP");
-  if (new Date() > user.resetOtpExpiry) throw new Error("OTP has expired. Please request a new one.");
+const validateResetToken = async (token) => {
+  const user = await prisma.user.findFirst({ where: { resetOtp: token } });
+  if (!user)                          throw new Error("Invalid or expired reset link");
+  if (new Date() > user.resetOtpExpiry) throw new Error("Reset link has expired. Please request a new one.");
 
-  return { message: "OTP verified. You can now reset your password.", email };
+  return { message: "Token is valid. You can now reset your password.", email: user.email };
 };
 
-// ─── Reset Password ───────────────────────────────────────────────────────────
+// ─── Step 3: Reset Password using token ──────────────────────────────────────
 
-const resetPassword = async (email, otp, newPassword) => {
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user)            throw new Error("No account found with this email");
-  if (!user.resetOtp)   throw new Error("No OTP requested. Please request a new one.");
-  if (user.resetOtp !== otp) throw new Error("Invalid OTP");
-  if (new Date() > user.resetOtpExpiry) throw new Error("OTP has expired. Please request a new one.");
+const resetPassword = async (token, newPassword) => {
+  const user = await prisma.user.findFirst({ where: { resetOtp: token } });
+  if (!user)                          throw new Error("Invalid or expired reset link");
+  if (new Date() > user.resetOtpExpiry) throw new Error("Reset link has expired. Please request a new one.");
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
 
@@ -130,4 +128,4 @@ const resetPassword = async (email, otp, newPassword) => {
   return { message: "Password reset successfully. You can now login." };
 };
 
-module.exports = { login, forgotPassword, verifyOtp, resetPassword };
+module.exports = { login, forgotPassword, validateResetToken, resetPassword };

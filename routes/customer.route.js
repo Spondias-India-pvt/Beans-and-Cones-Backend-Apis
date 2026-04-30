@@ -6,9 +6,11 @@ const { requireCustomer } = require("../middleware/auth.middleware");
 // Public — no auth
 router.post("/register",         ctrl.register);
 router.post("/login",            ctrl.login);
-router.post("/forgot-password",  ctrl.forgotPassword);
-router.post("/verify-otp",       ctrl.verifyOtp);
-router.post("/reset-password",   ctrl.resetPassword);
+
+// Forgot password — token link flow
+router.post("/forgot-password",  ctrl.forgotPassword);     // Step 1: send reset link
+router.post("/validate-token",   ctrl.validateResetToken);  // Step 2: validate token from link
+router.patch("/reset-password",  ctrl.resetPassword);       // Step 3: reset with token
 
 // Requires customer login
 router.get("/profile",           requireCustomer, ctrl.getProfile);

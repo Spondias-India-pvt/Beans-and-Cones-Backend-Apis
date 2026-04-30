@@ -58,7 +58,7 @@ model user {
   createdAt    DateTime   @default(now())
 
   // OTP for forgot password
-  resetOtp        String?   @db.VarChar(6)
+  resetOtp        String?   @db.VarChar(64)
   resetOtpExpiry  DateTime?
 
   superAdminStaff super_admin_staff?
@@ -615,7 +615,7 @@ model customer {
   createdAt     DateTime @default(now())
 
   // OTP for forgot password
-  resetOtp        String?   @db.VarChar(6)
+  resetOtp        String?   @db.VarChar(64)
   resetOtpExpiry  DateTime?
 
   addresses     customer_address[]
