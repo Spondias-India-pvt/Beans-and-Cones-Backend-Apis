@@ -38,7 +38,7 @@ const sendResetLinkEmail = async (to, token, name = "User", type = "staff") => {
         <p style="color: #888;">This link is valid for <strong>30 minutes</strong>. Do not share it with anyone.</p>
         <p style="color: #888;">If you did not request this, you can safely ignore this email.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 16px 0;">
-        <p style="color: #aaa; font-size: 12px;">Or copy this link: ${resetLink}</p>
+       
       </div>
     `,
   });

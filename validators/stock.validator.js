@@ -12,9 +12,8 @@ const validateCreateCategory = (req, res, next) => {
 };
 
 const validateCreateStockItem = (req, res, next) => {
-  const { name, sku, unit, reorderLevel, unitCost, categoryId } = req.body;
+  const { name, unit, reorderLevel, unitCost, categoryId } = req.body;
   if (!name || !name.trim())   return res.status(400).json({ success: false, message: "name is required" });
-  if (!sku  || !sku.trim())    return res.status(400).json({ success: false, message: "sku is required" });
   if (!unit || !STOCK_UNITS.includes(unit)) {
     return res.status(400).json({ success: false, message: `unit must be one of: ${STOCK_UNITS.join(", ")}` });
   }

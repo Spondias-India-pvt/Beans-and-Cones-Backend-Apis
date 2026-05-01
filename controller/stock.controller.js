@@ -40,12 +40,52 @@ const getWarehouseInventory = async (req, res, next) => {
   } catch (e) { next(e); }
 };
 
+const getWarehouseInventoryById = async (req, res, next) => {
+  try {
+    return res.json({ success: true, data: await svc.getWarehouseInventoryById(toInt(req.params.id)) });
+  } catch (e) { next(e); }
+};
+
+const getAllWarehousesInventory = async (req, res, next) => {
+  try {
+    return res.json({ success: true, data: await svc.getAllWarehousesInventory() });
+  } catch (e) { next(e); }
+};
+
 const addOrUpdateWarehouseInventory = async (req, res, next) => {
   try {
     const { stockItemId, quantity } = req.body;
     const inv = await svc.addOrUpdateWarehouseInventory(toInt(req.params.id), toInt(stockItemId), quantity);
     await log(req, "UPDATE_WAREHOUSE_INVENTORY", "WAREHOUSE", req.params.id, `${req.user.username} updated inventory for warehouse ID: ${req.params.id}`);
     return res.json({ success: true, message: "Inventory updated", data: inv });
+  } catch (e) { next(e); }
+};
+
+const updateWarehouseInventory = async (req, res, next) => {
+  try {
+    const { stockItemId, quantity } = req.body;
+    if (quantity === undefined || isNaN(Number(quantity))) {
+      return res.status(400).json({ success: false, message: "quantity must be a valid number" });
+    }
+    const inv = await svc.updateWarehouseInventory(toInt(req.params.id), toInt(stockItemId), quantity);
+    await log(req, "UPDATE_WAREHOUSE_INVENTORY", "WAREHOUSE", req.params.id, `${req.user.username} updated inventory quantity for warehouse ID: ${req.params.id}`);
+    return res.json({ success: true, message: "Inventory quantity updated", data: inv });
+  } catch (e) { next(e); }
+};
+
+const removeWarehouseInventoryItem = async (req, res, next) => {
+  try {
+    await svc.removeWarehouseInventoryItem(toInt(req.params.id), toInt(req.params.stockItemId));
+    await log(req, "REMOVE_WAREHOUSE_INVENTORY", "WAREHOUSE", req.params.id, `${req.user.username} removed stock item ${req.params.stockItemId} from warehouse ${req.params.id}`);
+    return res.json({ success: true, message: "Item removed from warehouse inventory" });
+  } catch (e) { next(e); }
+};
+
+const deleteWarehouseInventoryById = async (req, res, next) => {
+  try {
+    await svc.deleteWarehouseInventoryById(toInt(req.params.id));
+    await log(req, "DELETE_WAREHOUSE_INVENTORY", "WAREHOUSE_INVENTORY", req.params.id, `${req.user.username} deleted warehouse inventory ID: ${req.params.id}`);
+    return res.json({ success: true, message: "Warehouse inventory deleted" });
   } catch (e) { next(e); }
 };
 
@@ -182,7 +222,9 @@ const resolveDiscrepancy = async (req, res, next) => {
 
 module.exports = {
   createWarehouse, getAllWarehouses, getWarehouseById, updateWarehouse, deleteWarehouse,
-  getWarehouseInventory, addOrUpdateWarehouseInventory,
+  getWarehouseInventory, getWarehouseInventoryById, getAllWarehousesInventory,
+  addOrUpdateWarehouseInventory, updateWarehouseInventory, removeWarehouseInventoryItem,
+  deleteWarehouseInventoryById,
   getBranchInventory,
   createCategory, getAllCategories, getCategoryById, updateCategory, deleteCategory,
   createStockItem, getAllStockItems, getStockItemById, updateStockItem, deleteStockItem,

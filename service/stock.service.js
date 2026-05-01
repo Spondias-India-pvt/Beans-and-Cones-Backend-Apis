@@ -62,11 +62,68 @@ const addOrUpdateWarehouseInventory = async (warehouseId, stockItemId, quantity)
   });
 };
 
+// ─── Update warehouse inventory quantity ──────────────────────────────────────
+
+const updateWarehouseInventory = async (warehouseId, stockItemId, quantity) => {
+  const existing = await prisma.warehouse_inventory.findUnique({
+    where: { warehouseId_stockItemId: { warehouseId, stockItemId } },
+  });
+  if (!existing) throw new Error("Stock item not found in this warehouse. Use POST to add it first.");
+
+  return await prisma.warehouse_inventory.update({
+    where: { warehouseId_stockItemId: { warehouseId, stockItemId } },
+    data:  { quantity },
+    include: { stockItem: { select: { id: true, name: true, sku: true, unit: true } } },
+  });
+};
+
+// ─── Remove item from warehouse inventory ─────────────────────────────────────
+
+const removeWarehouseInventoryItem = async (warehouseId, stockItemId) => {
+  const existing = await prisma.warehouse_inventory.findUnique({
+    where: { warehouseId_stockItemId: { warehouseId, stockItemId } },
+  });
+  if (!existing) throw new Error("Stock item not found in this warehouse");
+
+  return await prisma.warehouse_inventory.delete({
+    where: { warehouseId_stockItemId: { warehouseId, stockItemId } },
+  });
+};
+
+const deleteWarehouseInventoryById = async (id) => {
+  await getWarehouseInventoryById(id);
+  return await prisma.warehouse_inventory.delete({ where: { id } });
+};
+
 const getWarehouseInventory = async (warehouseId) => {
   return await prisma.warehouse_inventory.findMany({
     where:   { warehouseId },
     include: { stockItem: { select: { id: true, name: true, sku: true, unit: true } } },
     orderBy: { stockItemId: "asc" },
+  });
+};
+
+const getWarehouseInventoryById = async (id) => {
+  const inventory = await prisma.warehouse_inventory.findUnique({
+    where: { id },
+    include: {
+      warehouse: { select: { id: true, name: true, code: true } },
+      stockItem: { select: { id: true, name: true, sku: true, unit: true } },
+    },
+  });
+  if (!inventory) throw new Error("Warehouse inventory item not found");
+  return inventory;
+};
+
+// ─── Get inventory across ALL warehouses ──────────────────────────────────────
+
+const getAllWarehousesInventory = async () => {
+  return await prisma.warehouse_inventory.findMany({
+    include: {
+      warehouse: { select: { id: true, name: true, code: true } },
+      stockItem: { select: { id: true, name: true, sku: true, unit: true } },
+    },
+    orderBy: [{ warehouseId: "asc" }, { stockItemId: "asc" }],
   });
 };
 
@@ -117,16 +174,30 @@ const deleteCategory = async (id) => {
 // ─── Stock Items ──────────────────────────────────────────────────────────────
 
 const createStockItem = async (data, userId) => {
-  const existingSku = await prisma.stock_items.findUnique({ where: { sku: data.sku } });
-  if (existingSku) throw new Error("SKU already exists");
-
   const category = await prisma.stock_categories.findUnique({ where: { id: Number(data.categoryId) } });
   if (!category) throw new Error("Category not found");
+
+  // Auto-generate SKU from category name + sequence
+  const prefix = category.name
+    .replace(/\s+/g, "")
+    .substring(0, 3)
+    .toUpperCase();
+
+  const existingCount = await prisma.stock_items.count({
+    where: { sku: { startsWith: prefix } },
+  });
+  const sku = `${prefix}-${String(existingCount + 1).padStart(4, "0")}`;
+
+  // Check if manually provided SKU exists (optional override)
+  if (data.sku && data.sku !== sku) {
+    const existingSku = await prisma.stock_items.findUnique({ where: { sku: data.sku } });
+    if (existingSku) throw new Error("SKU already exists");
+  }
 
   return await prisma.stock_items.create({
     data: {
       name:         data.name,
-      sku:          data.sku,
+      sku:          data.sku || sku,   // use provided SKU or auto-generated
       unit:         data.unit,
       reorderLevel: data.reorderLevel,
       unitCost:     data.unitCost,
@@ -571,7 +642,9 @@ const getDispatchesForBranch = async (actingUser, filters = {}) => {
 
 module.exports = {
   createWarehouse, getAllWarehouses, getWarehouseById, updateWarehouse, deleteWarehouse,
-  addOrUpdateWarehouseInventory, getWarehouseInventory,
+  addOrUpdateWarehouseInventory, updateWarehouseInventory, removeWarehouseInventoryItem,
+  deleteWarehouseInventoryById,
+  getWarehouseInventory, getWarehouseInventoryById, getAllWarehousesInventory,
   getBranchInventory,
   createCategory, getAllCategories, getCategoryById, updateCategory, deleteCategory,
   createStockItem, getAllStockItems, getStockItemById, updateStockItem, deleteStockItem,

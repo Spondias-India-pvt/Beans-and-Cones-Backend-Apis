@@ -9,20 +9,22 @@ const BASE = "/api";
 app.use(express.json());
 app.use(cors());
 
-// ─── Serve static HTML pages ──────────────────────────────────────────────────
+// Serve static HTML pages
 app.use(express.static(path.join(__dirname, "public")));
 
-// Reset password page — opened when user clicks email link
+// Reset password page
 app.get("/reset-password", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "reset-password.html"));
 });
 
-// Serve forgot-password page with reCAPTCHA site key injected
+// Forgot password page
 app.get("/forgot-password", (req, res) => {
-  const fs   = require("fs");
-  let   html = fs.readFileSync(path.join(__dirname, "public", "forgot-password.html"), "utf8");
-  html = html.replace("__RECAPTCHA_SITE_KEY__", process.env.RECAPTCHA_SITE_KEY || "");
-  res.send(html);
+  res.sendFile(path.join(__dirname, "public", "forgot-password.html"));
+});
+
+// Public config — exposes only the site key (safe to expose)
+app.get("/api/config", (req, res) => {
+  res.json({ recaptchaSiteKey: process.env.RECAPTCHA_SITE_KEY || "" });
 });
 
 // ─── Staff / Admin Routes ─────────────────────────────────────────────────────

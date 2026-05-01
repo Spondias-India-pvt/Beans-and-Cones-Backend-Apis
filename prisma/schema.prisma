@@ -7,7 +7,581 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Enums ────────────────────────────────────────────────────────────────────
+model role {
+  id              Int                 @id @default(autoincrement())
+  name            String              @unique
+  description     String?
+  createdAt       DateTime            @default(now())
+  branchEmployees branch_employee[]
+  rolePermissions rolepermission[]
+  superAdminStaff super_admin_staff[]
+}
+
+model user {
+  id                    Int                    @id @default(autoincrement())
+  username              String                 @unique
+  email                 String                 @unique
+  passwordHash          String
+  userType              UserType
+  status                UserStatus             @default(ACTIVE)
+  lastLogin             DateTime?
+  createdAt             DateTime               @default(now())
+  resetOtp              String?                @db.VarChar(64)
+  resetOtpExpiry        DateTime?
+  auditLogs             auditlog[]
+  branchEmployee        branch_employee?
+  discrepanciesResolved dispatch_discrepancy[]
+  dispatchesSent        stock_dispatches[]     @relation("DispatchedBy")
+  dispatchesReceived    stock_dispatches[]     @relation("ReceivedBy")
+  stockItemsCreated     stock_items[]
+  superAdminStaff       super_admin_staff?
+}
+
+model super_admin_staff {
+  id              Int                   @id @default(autoincrement())
+  staffCode       String                @unique
+  firstName       String
+  lastName        String
+  phone           String?
+  gender          String?
+  dateOfBirth     DateTime?
+  designation     String?
+  department      String?
+  hireDate        DateTime
+  employmentType  EmploymentType
+  experienceYears Float?
+  status          Boolean               @default(true)
+  createdAt       DateTime              @default(now())
+  roleId          Int
+  userId          Int                   @unique
+  branchAccess    staff_branch_access[]
+  role            role                  @relation(fields: [roleId], references: [id])
+  user            user                  @relation(fields: [userId], references: [id])
+
+  @@index([roleId], map: "super_admin_staff_roleId_fkey")
+}
+
+model staff_branch_access {
+  id                Int               @id @default(autoincrement())
+  superAdminStaffId Int
+  branchId          Int
+  grantedAt         DateTime          @default(now())
+  branch            branch            @relation(fields: [branchId], references: [id])
+  staff             super_admin_staff @relation(fields: [superAdminStaffId], references: [id])
+
+  @@unique([superAdminStaffId, branchId])
+  @@index([branchId], map: "staff_branch_access_branchId_fkey")
+}
+
+model branch {
+  id               Int                   @id @default(autoincrement())
+  branchName       String
+  branchCode       String                @unique
+  phone            String?
+  email            String?
+  addressLine1     String?
+  city             String?
+  state            String?
+  country          String?
+  postalCode       String?
+  latitude         Float?
+  longitude        Float?
+  openingTime      String?
+  closingTime      String?
+  deliveryRadiusKm Int?
+  status           Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  employees        branch_employee[]
+  inventory        branch_inventory[]
+  settings         branch_settings?
+  carts            cart[]
+  orders           order[]
+  products         product[]
+  staffAccess      staff_branch_access[]
+  dispatchesTo     stock_dispatches[]    @relation("DispatchTo")
+}
+
+model branch_employee {
+  id              Int                     @id @default(autoincrement())
+  employeeCode    String                  @unique
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  gender          String?
+  dateOfBirth     DateTime?
+  designation     String?
+  department      String?
+  hireDate        DateTime
+  employmentType  EmploymentType
+  experienceYears Float?
+  status          Boolean                 @default(true)
+  createdAt       DateTime                @default(now())
+  branchId        Int
+  roleId          Int
+  userId          Int                     @unique
+  branch          branch                  @relation(fields: [branchId], references: [id])
+  role            role                    @relation(fields: [roleId], references: [id])
+  user            user                    @relation(fields: [userId], references: [id])
+  salary          branch_employee_salary?
+
+  @@index([branchId], map: "branch_employee_branchId_fkey")
+  @@index([roleId], map: "branch_employee_roleId_fkey")
+}
+
+model branch_employee_salary {
+  id            Int             @id @default(autoincrement())
+  employeeId    Int             @unique
+  salaryType    SalaryType
+  baseSalary    Float
+  currency      String          @default("USD")
+  payFrequency  String?
+  overtimeRate  Float?
+  bonus         Float?
+  effectiveFrom DateTime
+  createdAt     DateTime        @default(now())
+  employee      branch_employee @relation(fields: [employeeId], references: [id])
+}
+
+model permission {
+  id              Int              @id @default(autoincrement())
+  name            String           @unique
+  module          String?
+  rolePermissions rolepermission[]
+}
+
+model rolepermission {
+  id           Int        @id @default(autoincrement())
+  roleId       Int
+  permissionId Int
+  permission   permission @relation(fields: [permissionId], references: [id])
+  role         role       @relation(fields: [roleId], references: [id])
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId], map: "rolepermission_permissionId_fkey")
+}
+
+model auditlog {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  performedBy String
+  action      String
+  module      String
+  referenceId String?
+  details     String?
+  createdAt   DateTime @default(now())
+  user        user     @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "auditlog_userId_fkey")
+}
+
+model branch_settings {
+  id              Int      @id @default(autoincrement())
+  branchId        Int      @unique
+  currency        String   @default("INR")
+  taxPercentage   Decimal  @db.Decimal(5, 2)
+  serviceCharge   Decimal? @db.Decimal(5, 2)
+  minOrderAmount  Decimal? @db.Decimal(10, 2)
+  deliveryEnabled Boolean  @default(false)
+  dineInEnabled   Boolean  @default(true)
+  takeawayEnabled Boolean  @default(true)
+  updatedAt       DateTime @updatedAt
+  branch          branch   @relation(fields: [branchId], references: [id])
+}
+
+model warehouse {
+  id                 Int                   @id @default(autoincrement())
+  name               String                @unique @db.VarChar(150)
+  code               String                @unique @db.VarChar(20)
+  addressLine1       String?               @db.VarChar(255)
+  city               String?               @db.VarChar(100)
+  state              String?               @db.VarChar(100)
+  country            String?               @db.VarChar(100)
+  phone              String?               @db.VarChar(20)
+  isActive           Boolean               @default(true)
+  createdAt          DateTime              @default(now())
+  dispatches         stock_dispatches[]
+  warehouseInventory warehouse_inventory[]
+}
+
+model stock_categories {
+  id          Int           @id @default(autoincrement())
+  name        String        @unique @db.VarChar(100)
+  description String?       @db.Text
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  stockItems  stock_items[]
+}
+
+model stock_items {
+  id                 Int                    @id @default(autoincrement())
+  categoryId         Int
+  name               String                 @db.VarChar(150)
+  sku                String                 @unique @db.VarChar(50)
+  unit               StockUnit
+  reorderLevel       Decimal                @db.Decimal(10, 3)
+  unitCost           Decimal                @db.Decimal(10, 2)
+  description        String?                @db.Text
+  isActive           Boolean                @default(true)
+  createdBy          Int
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  branchInventory    branch_inventory[]
+  discrepancies      dispatch_discrepancy[]
+  recipes            product_recipe[]
+  dispatchItems      stock_dispatch_items[]
+  category           stock_categories       @relation(fields: [categoryId], references: [id])
+  createdByUser      user                   @relation(fields: [createdBy], references: [id])
+  warehouseInventory warehouse_inventory[]
+
+  @@index([categoryId], map: "stock_items_categoryId_fkey")
+  @@index([createdBy], map: "stock_items_createdBy_fkey")
+}
+
+model stock_dispatches {
+  id               Int                    @id @default(autoincrement())
+  dispatchNumber   String                 @unique @db.VarChar(30)
+  warehouseId      Int
+  toBranchId       Int
+  status           DispatchStatus         @default(pending)
+  dispatchDate     DateTime               @db.Date
+  receivedDate     DateTime?              @db.Date
+  notes            String?                @db.Text
+  dispatchedBy     Int
+  receivedBy       Int?
+  createdAt        DateTime               @default(now())
+  discrepancies    dispatch_discrepancy[]
+  items            stock_dispatch_items[]
+  dispatchedByUser user                   @relation("DispatchedBy", fields: [dispatchedBy], references: [id])
+  receivedByUser   user?                  @relation("ReceivedBy", fields: [receivedBy], references: [id])
+  toBranch         branch                 @relation("DispatchTo", fields: [toBranchId], references: [id])
+  warehouse        warehouse              @relation(fields: [warehouseId], references: [id])
+
+  @@index([dispatchedBy], map: "stock_dispatches_dispatchedBy_fkey")
+  @@index([receivedBy], map: "stock_dispatches_receivedBy_fkey")
+  @@index([toBranchId], map: "stock_dispatches_toBranchId_fkey")
+  @@index([warehouseId], map: "stock_dispatches_warehouseId_fkey")
+}
+
+model stock_dispatch_items {
+  id               Int              @id @default(autoincrement())
+  dispatchId       Int
+  stockItemId      Int
+  quantitySent     Decimal          @db.Decimal(10, 3)
+  quantityReceived Decimal?         @db.Decimal(10, 3)
+  unitCost         Decimal          @db.Decimal(10, 2)
+  discrepancyNote  String?          @db.VarChar(255)
+  dispatch         stock_dispatches @relation(fields: [dispatchId], references: [id])
+  stockItem        stock_items      @relation(fields: [stockItemId], references: [id])
+
+  @@index([dispatchId], map: "stock_dispatch_items_dispatchId_fkey")
+  @@index([stockItemId], map: "stock_dispatch_items_stockItemId_fkey")
+}
+
+model dispatch_discrepancy {
+  id               Int              @id @default(autoincrement())
+  dispatchId       Int
+  stockItemId      Int
+  quantitySent     Decimal          @db.Decimal(10, 3)
+  quantityReceived Decimal          @db.Decimal(10, 3)
+  shortageQty      Decimal          @db.Decimal(10, 3)
+  reason           String?          @db.VarChar(255)
+  resolvedAt       DateTime?
+  resolvedBy       Int?
+  createdAt        DateTime         @default(now())
+  dispatch         stock_dispatches @relation(fields: [dispatchId], references: [id])
+  resolvedByUser   user?            @relation(fields: [resolvedBy], references: [id])
+  stockItem        stock_items      @relation(fields: [stockItemId], references: [id])
+
+  @@index([dispatchId], map: "dispatch_discrepancy_dispatchId_fkey")
+  @@index([resolvedBy], map: "dispatch_discrepancy_resolvedBy_fkey")
+  @@index([stockItemId], map: "dispatch_discrepancy_stockItemId_fkey")
+}
+
+model warehouse_inventory {
+  id          Int         @id @default(autoincrement())
+  warehouseId Int
+  stockItemId Int
+  quantity    Decimal     @db.Decimal(10, 3)
+  updatedAt   DateTime    @updatedAt
+  stockItem   stock_items @relation(fields: [stockItemId], references: [id])
+  warehouse   warehouse   @relation(fields: [warehouseId], references: [id])
+
+  @@unique([warehouseId, stockItemId])
+  @@index([stockItemId], map: "warehouse_inventory_stockItemId_fkey")
+}
+
+model branch_inventory {
+  id          Int         @id @default(autoincrement())
+  branchId    Int
+  stockItemId Int
+  quantity    Decimal     @db.Decimal(10, 3)
+  updatedAt   DateTime    @updatedAt
+  branch      branch      @relation(fields: [branchId], references: [id])
+  stockItem   stock_items @relation(fields: [stockItemId], references: [id])
+
+  @@unique([branchId, stockItemId])
+  @@index([stockItemId], map: "branch_inventory_stockItemId_fkey")
+}
+
+model product {
+  id          Int               @id @default(autoincrement())
+  name        String            @db.VarChar(150)
+  description String?           @db.Text
+  branchId    Int
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  cartItems   cart_item[]
+  orderItems  order_item[]
+  branch      branch            @relation(fields: [branchId], references: [id])
+  recipes     product_recipe[]
+  variants    product_variant[]
+
+  @@index([branchId], map: "product_branchId_fkey")
+}
+
+model product_variant {
+  id        Int     @id @default(autoincrement())
+  productId Int
+  name      String  @db.VarChar(100)
+  price     Decimal @db.Decimal(10, 2)
+  isActive  Boolean @default(true)
+  product   product @relation(fields: [productId], references: [id])
+
+  @@index([productId], map: "product_variant_productId_fkey")
+}
+
+model product_recipe {
+  id           Int         @id @default(autoincrement())
+  productId    Int
+  stockItemId  Int
+  quantityUsed Decimal     @db.Decimal(10, 3)
+  product      product     @relation(fields: [productId], references: [id])
+  stockItem    stock_items @relation(fields: [stockItemId], references: [id])
+
+  @@unique([productId, stockItemId])
+  @@index([stockItemId], map: "product_recipe_stockItemId_fkey")
+}
+
+model order {
+  id                Int                    @id @default(autoincrement())
+  orderNumber       String                 @unique @db.VarChar(30)
+  branchId          Int
+  orderType         OrderType
+  status            OrderStatus            @default(PENDING)
+  paymentStatus     PaymentStatus          @default(PENDING)
+  totalAmount       Decimal                @db.Decimal(10, 2)
+  couponId          Int?
+  notes             String?                @db.Text
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  couponDiscount    Decimal                @default(0.00) @db.Decimal(10, 2)
+  customerId        Int?
+  customerName      String?                @db.VarChar(100)
+  customerPhone     String?                @db.VarChar(20)
+  guestToken        String?                @db.VarChar(100)
+  loyaltyDiscount   Decimal                @default(0.00) @db.Decimal(10, 2)
+  loyaltyPointsUsed Decimal                @default(0.00) @db.Decimal(10, 2)
+  subtotal          Decimal                @db.Decimal(10, 2)
+  taxAmount         Decimal                @default(0.00) @db.Decimal(10, 2)
+  cancelDeadline    DateTime?
+  couponUsage       coupon_usage?
+  delivery          delivery?
+  loyaltyTxns       loyalty_transaction[]
+  branch            branch                 @relation(fields: [branchId], references: [id])
+  coupon            coupon?                @relation(fields: [couponId], references: [id])
+  customer          customer?              @relation(fields: [customerId], references: [id])
+  items             order_item[]
+  statusHistory     order_status_history[]
+  payment           payment?
+
+  @@index([branchId], map: "order_branchId_fkey")
+  @@index([couponId], map: "order_couponId_fkey")
+  @@index([customerId], map: "order_customerId_fkey")
+}
+
+model order_item {
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  productId Int
+  variantId Int?
+  quantity  Int
+  price     Decimal @db.Decimal(10, 2)
+  order     order   @relation(fields: [orderId], references: [id])
+  product   product @relation(fields: [productId], references: [id])
+
+  @@index([orderId], map: "order_item_orderId_fkey")
+  @@index([productId], map: "order_item_productId_fkey")
+}
+
+model payment {
+  id            Int           @id @default(autoincrement())
+  orderId       Int           @unique
+  amount        Decimal       @db.Decimal(10, 2)
+  method        String        @db.VarChar(50)
+  status        PaymentStatus @default(PENDING)
+  transactionId String?       @db.VarChar(100)
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  order         order         @relation(fields: [orderId], references: [id])
+}
+
+model coupon {
+  id            Int            @id @default(autoincrement())
+  code          String         @unique @db.VarChar(50)
+  discountType  DiscountType
+  discountValue Decimal        @db.Decimal(10, 2)
+  minOrderValue Decimal?       @db.Decimal(10, 2)
+  maxUses       Int?
+  usedCount     Int            @default(0)
+  isActive      Boolean        @default(true)
+  expiresAt     DateTime?
+  createdAt     DateTime       @default(now())
+  usages        coupon_usage[]
+  orders        order[]
+}
+
+model loyalty_wallet {
+  id         Int      @id @default(autoincrement())
+  customerId String   @unique @db.VarChar(100)
+  points     Decimal  @default(0.00) @db.Decimal(10, 2)
+  updatedAt  DateTime @updatedAt
+}
+
+model vip_plan {
+  id           Int      @id @default(autoincrement())
+  name         String   @unique @db.VarChar(100)
+  price        Decimal  @db.Decimal(10, 2)
+  durationDays Int
+  benefits     String?  @db.Text
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+}
+
+model delivery {
+  id              Int       @id @default(autoincrement())
+  orderId         Int       @unique
+  deliveryAddress String    @db.Text
+  status          String    @default("pending") @db.VarChar(30)
+  assignedTo      Int?
+  estimatedTime   DateTime?
+  deliveredAt     DateTime?
+  createdAt       DateTime  @default(now())
+  order           order     @relation(fields: [orderId], references: [id])
+}
+
+model notification {
+  id        Int      @id @default(autoincrement())
+  title     String   @db.VarChar(150)
+  message   String   @db.Text
+  type      String   @db.VarChar(50)
+  branchId  Int?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model customer {
+  id             Int                   @id @default(autoincrement())
+  name           String                @db.VarChar(100)
+  phone          String                @unique @db.VarChar(20)
+  email          String?               @unique @db.VarChar(100)
+  passwordHash   String?
+  loyaltyPoints  Decimal               @default(0.00) @db.Decimal(10, 2)
+  isActive       Boolean               @default(true)
+  createdAt      DateTime              @default(now())
+  resetOtp       String?               @db.VarChar(64)
+  resetOtpExpiry DateTime?
+  carts          cart[]
+  couponUsages   coupon_usage[]
+  addresses      customer_address[]
+  loyaltyTxns    loyalty_transaction[]
+  orders         order[]
+}
+
+model customer_address {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  address    String   @db.VarChar(255)
+  city       String   @db.VarChar(100)
+  latitude   Float?
+  longitude  Float?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  customer   customer @relation(fields: [customerId], references: [id])
+
+  @@index([customerId], map: "customer_address_customerId_fkey")
+}
+
+model cart {
+  id         Int         @id @default(autoincrement())
+  customerId Int?
+  guestToken String?     @db.VarChar(100)
+  branchId   Int
+  status     CartStatus  @default(ACTIVE)
+  couponCode String?     @db.VarChar(50)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  branch     branch      @relation(fields: [branchId], references: [id])
+  customer   customer?   @relation(fields: [customerId], references: [id])
+  items      cart_item[]
+
+  @@index([branchId], map: "cart_branchId_fkey")
+  @@index([customerId], map: "cart_customerId_fkey")
+}
+
+model cart_item {
+  id        Int     @id @default(autoincrement())
+  cartId    Int
+  productId Int
+  variantId Int?
+  quantity  Int
+  price     Decimal @db.Decimal(10, 2)
+  cart      cart    @relation(fields: [cartId], references: [id])
+  product   product @relation(fields: [productId], references: [id])
+
+  @@index([cartId], map: "cart_item_cartId_fkey")
+  @@index([productId], map: "cart_item_productId_fkey")
+}
+
+model coupon_usage {
+  id         Int       @id @default(autoincrement())
+  couponId   Int
+  customerId Int?
+  guestToken String?   @db.VarChar(100)
+  orderId    Int       @unique
+  createdAt  DateTime  @default(now())
+  coupon     coupon    @relation(fields: [couponId], references: [id])
+  customer   customer? @relation(fields: [customerId], references: [id])
+  order      order     @relation(fields: [orderId], references: [id])
+
+  @@index([couponId], map: "coupon_usage_couponId_fkey")
+  @@index([customerId], map: "coupon_usage_customerId_fkey")
+}
+
+model loyalty_transaction {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  points     Decimal  @db.Decimal(10, 2)
+  type       String   @db.VarChar(10)
+  orderId    Int?
+  createdAt  DateTime @default(now())
+  customer   customer @relation(fields: [customerId], references: [id])
+  order      order?   @relation(fields: [orderId], references: [id])
+
+  @@index([customerId], map: "loyalty_transaction_customerId_fkey")
+  @@index([orderId], map: "loyalty_transaction_orderId_fkey")
+}
+
+model order_status_history {
+  id        Int         @id @default(autoincrement())
+  orderId   Int
+  status    OrderStatus
+  changedAt DateTime    @default(now())
+  changedBy Int?
+  order     order       @relation(fields: [orderId], references: [id])
+
+  @@index([orderId], map: "order_status_history_orderId_fkey")
+}
 
 enum EmploymentType {
   FULL_TIME
@@ -32,327 +606,6 @@ enum UserType {
   BRANCH_EMPLOYEE
 }
 
-// ─── role ─────────────────────────────────────────────────────────────────────
-
-model role {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique
-  description String?
-  createdAt   DateTime @default(now())
-
-  superAdminStaff super_admin_staff[]
-  branchEmployees branch_employee[]
-  rolePermissions rolepermission[]
-}
-
-// ─── user ─────────────────────────────────────────────────────────────────────
-
-model user {
-  id           Int        @id @default(autoincrement())
-  username     String     @unique
-  email        String     @unique
-  passwordHash String
-  userType     UserType
-  status       UserStatus @default(ACTIVE)
-  lastLogin    DateTime?
-  createdAt    DateTime   @default(now())
-
-  // OTP for forgot password
-  resetOtp        String?   @db.VarChar(64)
-  resetOtpExpiry  DateTime?
-
-  superAdminStaff super_admin_staff?
-  branchEmployee  branch_employee?
-  auditLogs       auditlog[]
-  stockItemsCreated    stock_items[]
-  dispatchesSent       stock_dispatches[] @relation("DispatchedBy")
-  dispatchesReceived   stock_dispatches[] @relation("ReceivedBy")
-  discrepanciesResolved dispatch_discrepancy[]
-}
-
-// ─── super_admin_staff ────────────────────────────────────────────────────────
-
-model super_admin_staff {
-  id              Int            @id @default(autoincrement())
-  staffCode       String         @unique
-  firstName       String
-  lastName        String
-  phone           String?
-  gender          String?
-  dateOfBirth     DateTime?
-  designation     String?
-  department      String?
-  hireDate        DateTime
-  employmentType  EmploymentType
-  experienceYears Float?
-  status          Boolean        @default(true)
-  createdAt       DateTime       @default(now())
-
-  roleId          Int
-  role            role           @relation(fields: [roleId], references: [id])
-
-  userId          Int            @unique
-  user            user           @relation(fields: [userId], references: [id])
-
-  branchAccess    staff_branch_access[]
-}
-
-// ─── staff_branch_access ──────────────────────────────────────────────────────
-
-model staff_branch_access {
-  id                Int               @id @default(autoincrement())
-  superAdminStaffId Int
-  branchId          Int
-  staff             super_admin_staff @relation(fields: [superAdminStaffId], references: [id])
-  branch            branch            @relation(fields: [branchId], references: [id])
-  grantedAt         DateTime          @default(now())
-
-  @@unique([superAdminStaffId, branchId])
-}
-
-// ─── branch ───────────────────────────────────────────────────────────────────
-
-model branch {
-  id               Int      @id @default(autoincrement())
-  branchName       String
-  branchCode       String   @unique
-  phone            String?
-  email            String?
-  addressLine1     String?
-  city             String?
-  state            String?
-  country          String?
-  postalCode       String?
-  latitude         Float?
-  longitude        Float?
-  openingTime      String?
-  closingTime      String?
-  deliveryRadiusKm Int?
-  status           Boolean  @default(true)
-  createdAt        DateTime @default(now())
-
-  employees   branch_employee[]
-  staffAccess staff_branch_access[]
-  settings    branch_settings?
-  dispatchesTo   stock_dispatches[] @relation("DispatchTo")
-  inventory      branch_inventory[]
-  products       product[]
-  orders         order[]
-  carts          cart[]
-}
-
-// ─── branch_employee ──────────────────────────────────────────────────────────
-
-model branch_employee {
-  id              Int            @id @default(autoincrement())
-  employeeCode    String         @unique
-  firstName       String
-  lastName        String
-  email           String?
-  phone           String?
-  gender          String?
-  dateOfBirth     DateTime?
-  designation     String?
-  department      String?
-  hireDate        DateTime
-  employmentType  EmploymentType
-  experienceYears Float?
-  status          Boolean        @default(true)
-  createdAt       DateTime       @default(now())
-
-  branchId        Int
-  branch          branch         @relation(fields: [branchId], references: [id])
-
-  roleId          Int
-  role            role           @relation(fields: [roleId], references: [id])
-
-  userId          Int            @unique
-  user            user           @relation(fields: [userId], references: [id])
-
-  salary          branch_employee_salary?
-}
-
-// ─── branch_employee_salary ───────────────────────────────────────────────────
-
-model branch_employee_salary {
-  id            Int             @id @default(autoincrement())
-  employeeId    Int             @unique
-  employee      branch_employee @relation(fields: [employeeId], references: [id])
-  salaryType    SalaryType
-  baseSalary    Float
-  currency      String          @default("USD")
-  payFrequency  String?
-  overtimeRate  Float?
-  bonus         Float?
-  effectiveFrom DateTime
-  createdAt     DateTime        @default(now())
-}
-
-// ─── permission ───────────────────────────────────────────────────────────────
-
-model permission {
-  id              Int              @id @default(autoincrement())
-  name            String           @unique
-  module          String?
-  rolePermissions rolepermission[]
-}
-
-// ─── rolepermission ───────────────────────────────────────────────────────────
-
-model rolepermission {
-  id           Int        @id @default(autoincrement())
-  roleId       Int
-  permissionId Int
-  role         role       @relation(fields: [roleId], references: [id])
-  permission   permission @relation(fields: [permissionId], references: [id])
-
-  @@unique([roleId, permissionId])
-}
-
-// ─── auditlog ─────────────────────────────────────────────────────────────────
-
-model auditlog {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  user        user     @relation(fields: [userId], references: [id])
-  performedBy String   // username of who did the action
-  action      String
-  module      String
-  referenceId String?
-  details     String?  // extra context e.g. "Created branch: NYC001"
-  createdAt   DateTime @default(now())
-}
-
-// ─── branch_settings ─────────────────────────────────────────────────────────
-
-model branch_settings {
-  id               Int      @id @default(autoincrement())
-  branchId         Int      @unique
-  branch           branch   @relation(fields: [branchId], references: [id])
-  currency         String   @default("INR")
-  taxPercentage    Decimal  @db.Decimal(5, 2)
-  serviceCharge    Decimal? @db.Decimal(5, 2)
-  minOrderAmount   Decimal? @db.Decimal(10, 2)
-  deliveryEnabled  Boolean  @default(false)
-  dineInEnabled    Boolean  @default(true)
-  takeawayEnabled  Boolean  @default(true)
-  updatedAt        DateTime @updatedAt
-}
-
-// ─── warehouse ───────────────────────────────────────────────────────────────
-
-model warehouse {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique @db.VarChar(150)
-  code        String   @unique @db.VarChar(20)
-  addressLine1 String? @db.VarChar(255)
-  city        String?  @db.VarChar(100)
-  state       String?  @db.VarChar(100)
-  country     String?  @db.VarChar(100)
-  phone       String?  @db.VarChar(20)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-
-  dispatches         stock_dispatches[]
-  warehouseInventory warehouse_inventory[]
-}
-
-// ─── stock_categories ────────────────────────────────────────────────────────
-
-model stock_categories {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique @db.VarChar(100)
-  description String?  @db.Text
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-
-  stockItems  stock_items[]
-}
-
-// ─── stock_items ─────────────────────────────────────────────────────────────
-
-model stock_items {
-  id           Int              @id @default(autoincrement())
-  uuid         String           @unique @default(uuid()) @db.VarChar(36)
-  categoryId   Int
-  category     stock_categories @relation(fields: [categoryId], references: [id])
-  name         String           @db.VarChar(150)
-  sku          String           @unique @db.VarChar(50)
-  unit         StockUnit
-  reorderLevel Decimal          @db.Decimal(10, 3)
-  unitCost     Decimal          @db.Decimal(10, 2)
-  description  String?          @db.Text
-  isActive     Boolean          @default(true)
-  createdBy    Int
-  createdByUser user            @relation(fields: [createdBy], references: [id])
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-
-  dispatchItems       stock_dispatch_items[]
-  warehouseInventory  warehouse_inventory[]
-  branchInventory     branch_inventory[]
-  recipes             product_recipe[]
-  discrepancies       dispatch_discrepancy[]
-}
-
-// ─── stock_dispatches ────────────────────────────────────────────────────────
-
-model stock_dispatches {
-  id             Int              @id @default(autoincrement())
-  dispatchNumber String           @unique @db.VarChar(30)
-  warehouseId    Int
-  warehouse      warehouse        @relation(fields: [warehouseId], references: [id])
-  toBranchId     Int
-  toBranch       branch           @relation("DispatchTo", fields: [toBranchId], references: [id])
-  status         DispatchStatus   @default(pending)
-  dispatchDate   DateTime         @db.Date
-  receivedDate   DateTime?        @db.Date
-  notes          String?          @db.Text
-  dispatchedBy   Int
-  dispatchedByUser user           @relation("DispatchedBy", fields: [dispatchedBy], references: [id])
-  receivedBy     Int?
-  receivedByUser user?            @relation("ReceivedBy", fields: [receivedBy], references: [id])
-  createdAt      DateTime         @default(now())
-
-  items          stock_dispatch_items[]
-  discrepancies  dispatch_discrepancy[]
-}
-
-// ─── stock_dispatch_items ────────────────────────────────────────────────────
-
-model stock_dispatch_items {
-  id               Int              @id @default(autoincrement())
-  dispatchId       Int
-  dispatch         stock_dispatches @relation(fields: [dispatchId], references: [id])
-  stockItemId      Int
-  stockItem        stock_items      @relation(fields: [stockItemId], references: [id])
-  quantitySent     Decimal          @db.Decimal(10, 3)
-  quantityReceived Decimal?         @db.Decimal(10, 3)
-  unitCost         Decimal          @db.Decimal(10, 2)
-  discrepancyNote  String?          @db.VarChar(255)  // reason if quantity differs
-}
-
-// ─── dispatch_discrepancy ────────────────────────────────────────────────────
-// Auto-created when received quantity < sent quantity
-
-model dispatch_discrepancy {
-  id               Int              @id @default(autoincrement())
-  dispatchId       Int
-  dispatch         stock_dispatches @relation(fields: [dispatchId], references: [id])
-  stockItemId      Int
-  stockItem        stock_items      @relation(fields: [stockItemId], references: [id])
-  quantitySent     Decimal          @db.Decimal(10, 3)
-  quantityReceived Decimal          @db.Decimal(10, 3)
-  shortageQty      Decimal          @db.Decimal(10, 3)  // sent - received
-  reason           String?          @db.VarChar(255)
-  resolvedAt       DateTime?
-  resolvedBy       Int?
-  resolvedByUser   user?            @relation(fields: [resolvedBy], references: [id])
-  createdAt        DateTime         @default(now())
-}
-
-// ─── Enums for stock ─────────────────────────────────────────────────────────
-
 enum StockUnit {
   kg
   g
@@ -369,205 +622,6 @@ enum DispatchStatus {
   received
   rejected
 }
-
-// ─── warehouse_inventory ─────────────────────────────────────────────────────
-
-model warehouse_inventory {
-  id          Int       @id @default(autoincrement())
-  warehouseId Int
-  stockItemId Int
-  quantity    Decimal   @db.Decimal(10, 3)
-  warehouse   warehouse @relation(fields: [warehouseId], references: [id])
-  stockItem   stock_items @relation(fields: [stockItemId], references: [id])
-  updatedAt   DateTime  @updatedAt
-
-  @@unique([warehouseId, stockItemId])
-}
-
-// ─── branch_inventory ────────────────────────────────────────────────────────
-
-model branch_inventory {
-  id          Int     @id @default(autoincrement())
-  branchId    Int
-  stockItemId Int
-  quantity    Decimal @db.Decimal(10, 3)
-  branch      branch  @relation(fields: [branchId], references: [id])
-  stockItem   stock_items @relation(fields: [stockItemId], references: [id])
-  updatedAt   DateTime @updatedAt
-
-  @@unique([branchId, stockItemId])
-}
-
-// ─── product ─────────────────────────────────────────────────────────────────
-
-model product {
-  id          Int      @id @default(autoincrement())
-  name        String   @db.VarChar(150)
-  description String?  @db.Text
-  branchId    Int
-  branch      branch   @relation(fields: [branchId], references: [id])
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-
-  variants    product_variant[]
-  recipes     product_recipe[]
-  orderItems  order_item[]
-  cartItems   cart_item[]
-}
-
-// ─── product_variant ─────────────────────────────────────────────────────────
-
-model product_variant {
-  id        Int     @id @default(autoincrement())
-  productId Int
-  name      String  @db.VarChar(100)
-  price     Decimal @db.Decimal(10, 2)
-  isActive  Boolean @default(true)
-  product   product @relation(fields: [productId], references: [id])
-}
-
-// ─── product_recipe ──────────────────────────────────────────────────────────
-
-model product_recipe {
-  id           Int         @id @default(autoincrement())
-  productId    Int
-  stockItemId  Int
-  quantityUsed Decimal     @db.Decimal(10, 3)
-  product      product     @relation(fields: [productId], references: [id])
-  stockItem    stock_items @relation(fields: [stockItemId], references: [id])
-
-  @@unique([productId, stockItemId])
-}
-
-// ─── order ───────────────────────────────────────────────────────────────────
-
-model order {
-  id              Int           @id @default(autoincrement())
-  orderNumber     String        @unique @db.VarChar(30)
-  branchId        Int
-  branch          branch        @relation(fields: [branchId], references: [id])
-  customerId      Int?
-  customer        customer?     @relation(fields: [customerId], references: [id])
-  guestToken      String?       @db.VarChar(100)
-  customerName    String?       @db.VarChar(100)
-  customerPhone   String?       @db.VarChar(20)
-  orderType       OrderType
-  status          OrderStatus   @default(PENDING)
-  paymentStatus   PaymentStatus @default(PENDING)
-  subtotal        Decimal       @db.Decimal(10, 2)
-  taxAmount       Decimal       @default(0) @db.Decimal(10, 2)
-  couponDiscount  Decimal       @default(0) @db.Decimal(10, 2)
-  loyaltyDiscount Decimal       @default(0) @db.Decimal(10, 2)
-  totalAmount     Decimal       @db.Decimal(10, 2)
-  couponId        Int?
-  coupon          coupon?       @relation(fields: [couponId], references: [id])
-  loyaltyPointsUsed Decimal     @default(0) @db.Decimal(10, 2)
-  cancelDeadline  DateTime?     // customer can cancel before this time
-  notes           String?       @db.Text
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  items           order_item[]
-  payment         payment?
-  delivery        delivery?
-  statusHistory   order_status_history[]
-  loyaltyTxns     loyalty_transaction[]
-  couponUsage     coupon_usage?
-}
-
-// ─── order_item ──────────────────────────────────────────────────────────────
-
-model order_item {
-  id        Int     @id @default(autoincrement())
-  orderId   Int
-  productId Int
-  variantId Int?
-  quantity  Int
-  price     Decimal @db.Decimal(10, 2)
-  order     order   @relation(fields: [orderId], references: [id])
-  product   product @relation(fields: [productId], references: [id])
-}
-
-// ─── payment ─────────────────────────────────────────────────────────────────
-
-model payment {
-  id            Int           @id @default(autoincrement())
-  orderId       Int           @unique
-  amount        Decimal       @db.Decimal(10, 2)
-  method        String        @db.VarChar(50)
-  status        PaymentStatus @default(PENDING)
-  transactionId String?       @db.VarChar(100)
-  paidAt        DateTime?
-  order         order         @relation(fields: [orderId], references: [id])
-  createdAt     DateTime      @default(now())
-}
-
-// ─── coupon ──────────────────────────────────────────────────────────────────
-
-model coupon {
-  id            Int          @id @default(autoincrement())
-  code          String       @unique @db.VarChar(50)
-  discountType  DiscountType
-  discountValue Decimal      @db.Decimal(10, 2)
-  minOrderValue Decimal?     @db.Decimal(10, 2)
-  maxUses       Int?
-  usedCount     Int          @default(0)
-  isActive      Boolean      @default(true)
-  expiresAt     DateTime?
-  createdAt     DateTime     @default(now())
-
-  orders        order[]
-  usages        coupon_usage[]
-}
-
-// ─── loyalty_wallet ──────────────────────────────────────────────────────────
-
-model loyalty_wallet {
-  id         Int      @id @default(autoincrement())
-  customerId String   @unique @db.VarChar(100)
-  points     Decimal  @default(0) @db.Decimal(10, 2)
-  updatedAt  DateTime @updatedAt
-}
-
-// ─── vip_plan ────────────────────────────────────────────────────────────────
-
-model vip_plan {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique @db.VarChar(100)
-  price       Decimal  @db.Decimal(10, 2)
-  durationDays Int
-  benefits    String?  @db.Text
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-}
-
-// ─── delivery ────────────────────────────────────────────────────────────────
-
-model delivery {
-  id              Int      @id @default(autoincrement())
-  orderId         Int      @unique
-  order           order    @relation(fields: [orderId], references: [id])
-  deliveryAddress String   @db.Text
-  status          String   @default("pending") @db.VarChar(30)
-  assignedTo      Int?
-  estimatedTime   DateTime?
-  deliveredAt     DateTime?
-  createdAt       DateTime @default(now())
-}
-
-// ─── notification ────────────────────────────────────────────────────────────
-
-model notification {
-  id        Int      @id @default(autoincrement())
-  title     String   @db.VarChar(150)
-  message   String   @db.Text
-  type      String   @db.VarChar(50)
-  branchId  Int?
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
-}
-
-// ─── New enums ────────────────────────────────────────────────────────────────
 
 enum OrderType {
   DINE_IN
@@ -600,109 +654,4 @@ enum CartStatus {
   ACTIVE
   ORDERED
   ABANDONED
-}
-
-// ─── customer ─────────────────────────────────────────────────────────────────
-
-model customer {
-  id            Int      @id @default(autoincrement())
-  name          String   @db.VarChar(100)
-  phone         String   @unique @db.VarChar(20)
-  email         String?  @unique @db.VarChar(100)
-  passwordHash  String?
-  loyaltyPoints Decimal  @default(0) @db.Decimal(10, 2)
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-
-  // OTP for forgot password
-  resetOtp        String?   @db.VarChar(64)
-  resetOtpExpiry  DateTime?
-
-  addresses     customer_address[]
-  orders        order[]
-  carts         cart[]
-  loyaltyTxns   loyalty_transaction[]
-  couponUsages  coupon_usage[]
-}
-
-// ─── customer_address ────────────────────────────────────────────────────────
-
-model customer_address {
-  id         Int      @id @default(autoincrement())
-  customerId Int
-  customer   customer @relation(fields: [customerId], references: [id])
-  address    String   @db.VarChar(255)
-  city       String   @db.VarChar(100)
-  latitude   Float?
-  longitude  Float?
-  isDefault  Boolean  @default(false)
-  createdAt  DateTime @default(now())
-}
-
-// ─── cart ─────────────────────────────────────────────────────────────────────
-
-model cart {
-  id         Int        @id @default(autoincrement())
-  customerId Int?
-  customer   customer?  @relation(fields: [customerId], references: [id])
-  guestToken String?    @db.VarChar(100)  // for guest users
-  branchId   Int
-  branch     branch     @relation(fields: [branchId], references: [id])
-  status     CartStatus @default(ACTIVE)
-  couponCode String?    @db.VarChar(50)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-
-  items      cart_item[]
-}
-
-// ─── cart_item ────────────────────────────────────────────────────────────────
-
-model cart_item {
-  id        Int     @id @default(autoincrement())
-  cartId    Int
-  cart      cart    @relation(fields: [cartId], references: [id])
-  productId Int
-  product   product @relation(fields: [productId], references: [id])
-  variantId Int?
-  quantity  Int
-  price     Decimal @db.Decimal(10, 2)
-}
-
-// ─── coupon_usage ─────────────────────────────────────────────────────────────
-
-model coupon_usage {
-  id         Int      @id @default(autoincrement())
-  couponId   Int
-  coupon     coupon   @relation(fields: [couponId], references: [id])
-  customerId Int?
-  customer   customer? @relation(fields: [customerId], references: [id])
-  guestToken String?  @db.VarChar(100)
-  orderId    Int      @unique
-  order      order    @relation(fields: [orderId], references: [id])
-  createdAt  DateTime @default(now())
-}
-
-// ─── loyalty_transaction ─────────────────────────────────────────────────────
-
-model loyalty_transaction {
-  id         Int      @id @default(autoincrement())
-  customerId Int
-  customer   customer @relation(fields: [customerId], references: [id])
-  points     Decimal  @db.Decimal(10, 2)
-  type       String   @db.VarChar(10)  // EARN or REDEEM
-  orderId    Int?
-  order      order?   @relation(fields: [orderId], references: [id])
-  createdAt  DateTime @default(now())
-}
-
-// ─── order_status_history ────────────────────────────────────────────────────
-
-model order_status_history {
-  id        Int         @id @default(autoincrement())
-  orderId   Int
-  order     order       @relation(fields: [orderId], references: [id])
-  status    OrderStatus
-  changedAt DateTime    @default(now())
-  changedBy Int?
 }

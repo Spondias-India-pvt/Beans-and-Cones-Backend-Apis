@@ -17,8 +17,13 @@ router.put("/warehouses/:id",                 authenticate, isSuperAdmin, ctrl.u
 router.delete("/warehouses/:id",              authenticate, isSuperAdmin, ctrl.deleteWarehouse);
 
 // Warehouse Inventory
-router.get("/warehouses/:id/inventory",       authenticate, isSuperAdmin, ctrl.getWarehouseInventory);
-router.post("/warehouses/:id/inventory",      authenticate, isSuperAdmin, ctrl.addOrUpdateWarehouseInventory);
+router.get("/warehouses/inventory/all",              authenticate, isSuperAdmin, ctrl.getAllWarehousesInventory);
+router.get("/warehouses/inventory/:id",              authenticate, isSuperAdmin, ctrl.getWarehouseInventoryById);
+router.delete("/warehouses/inventory/:id",           authenticate, isSuperAdmin, ctrl.deleteWarehouseInventoryById);
+router.get("/warehouses/:id/inventory",              authenticate, isSuperAdmin, ctrl.getWarehouseInventory);
+router.post("/warehouses/:id/inventory",             authenticate, isSuperAdmin, ctrl.addOrUpdateWarehouseInventory);
+router.put("/warehouses/:id/inventory",              authenticate, isSuperAdmin, ctrl.updateWarehouseInventory);
+router.delete("/warehouses/:id/inventory/:stockItemId", authenticate, isSuperAdmin, ctrl.removeWarehouseInventoryItem);
 
 // ─── Branch Inventory (Super Admin or Branch Admin) ───────────────────────────
 router.get("/inventory/:branchId",            authenticate, canManageEmployees, ctrl.getBranchInventory);
