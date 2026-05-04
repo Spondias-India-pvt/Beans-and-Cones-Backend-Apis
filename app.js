@@ -5,6 +5,7 @@ const path    = require("path");
 
 const app  = express();
 const BASE = "/api";
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(cors());
@@ -17,14 +18,23 @@ app.get("/reset-password", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "reset-password.html"));
 });
 
-// Forgot password page
+// Forgot password page — injects reCAPTCHA site key directly into HTML
 app.get("/forgot-password", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "forgot-password.html"));
+  const fs      = require("fs");
+  const siteKey = process.env.RECAPTCHA_SITE_KEY || "";
+  let   html    = fs.readFileSync(path.join(__dirname, "public", "forgot-password.html"), "utf8");
+  // Replace placeholder with actual site key
+  html = html.replace(/RECAPTCHA_SITE_KEY_PLACEHOLDER/g, siteKey);
+  res.setHeader("Content-Type", "text/html");
+  res.send(html);
 });
 
 // Public config — exposes only the site key (safe to expose)
 app.get("/api/config", (req, res) => {
-  res.json({ recaptchaSiteKey: process.env.RECAPTCHA_SITE_KEY || "" });
+  res.json({
+    recaptchaSiteKey: process.env.RECAPTCHA_SITE_KEY || "",
+    skipCaptcha: process.env.SKIP_CAPTCHA === "true",
+  });
 });
 
 // ─── Staff / Admin Routes ─────────────────────────────────────────────────────
@@ -60,6 +70,6 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   return res.status(status).json({ success: false, message });
 });
 
-app.listen(process.env.PORT, () => {
-  console.log(`Server running on port ${process.env.PORT}`);
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

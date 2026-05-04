@@ -1,27 +1,5 @@
 const authService        = require("../service/auth.service");
 const { createAuditLog } = require("../utils/auditLog");
-const https              = require("https");
-
-// ─── Verify Google reCAPTCHA token ────────────────────────────────────────────
-const verifyCaptcha = (token) => {
-  return new Promise((resolve) => {
-    const secret = process.env.RECAPTCHA_SECRET_KEY;
-    const url    = `https://www.google.com/recaptcha/api/siteverify?secret=${secret}&response=${token}`;
-
-    https.get(url, (res) => {
-      let data = "";
-      res.on("data", (chunk) => { data += chunk; });
-      res.on("end", () => {
-        try {
-          const parsed = JSON.parse(data);
-          resolve(parsed.success === true);
-        } catch {
-          resolve(false);
-        }
-      });
-    }).on("error", () => resolve(false));
-  });
-};
 
 // POST /auth/login
 const login = async (req, res, next) => {
@@ -49,15 +27,8 @@ const getMe = (req, res) => {
 // POST /auth/forgot-password
 const forgotPassword = async (req, res, next) => {
   try {
-    const { email, captchaToken } = req.body;
+    const { email } = req.body;
     if (!email) return res.status(400).json({ success: false, message: "email is required" });
-
-    // Verify reCAPTCHA (skip in dev mode)
-    if (process.env.SKIP_CAPTCHA !== "true") {
-      if (!captchaToken) return res.status(400).json({ success: false, message: "Please complete the CAPTCHA" });
-      const captchaOk = await verifyCaptcha(captchaToken);
-      if (!captchaOk) return res.status(400).json({ success: false, message: "CAPTCHA verification failed. Please try again." });
-    }
 
     const result = await authService.forgotPassword(email);
     return res.json({ success: true, message: result.message });
